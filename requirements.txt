@@ -1,0 +1,6 @@
+flask>=3.0.0
+pyyaml>=6.0.1
+psutil>=5.9.0
+rich>=13.7.0
+click>=8.1.7
+pyxattr>=0.8.1
