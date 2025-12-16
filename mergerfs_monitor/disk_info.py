@@ -625,13 +625,20 @@ class DiskInfo:
             bytes_value: Number of bytes
 
         Returns:
-            Formatted string (e.g., "16.00 TB")
+            Formatted string (e.g., "16 TB")
         """
         for unit in ['B', 'KB', 'MB', 'GB', 'TB', 'PB']:
             if bytes_value < 1000.0:
-                return f"{bytes_value:.2f} {unit}"
+                # Remove decimals if the value is a whole number
+                if bytes_value == int(bytes_value):
+                    return f"{int(bytes_value)} {unit}"
+                return f"{bytes_value:.1f} {unit}"
             bytes_value /= 1000.0
-        return f"{bytes_value:.2f} EB"
+
+        # For EB range
+        if bytes_value == int(bytes_value):
+            return f"{int(bytes_value)} EB"
+        return f"{bytes_value:.1f} EB"
 
     @staticmethod
     def get_branch_info(branch_path: str) -> Dict[str, any]:
