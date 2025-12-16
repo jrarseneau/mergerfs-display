@@ -350,7 +350,7 @@ HTML_TEMPLATE = """
                         <tr>
                             <th>Branch</th>
                             <th>Physical Disk</th>
-                            <th>Temperature</th>
+                            <th>Temp</th>
                             <th>Total Space</th>
                             <th>Used Space</th>
                             <th>Free Space</th>

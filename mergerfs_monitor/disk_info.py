@@ -549,7 +549,7 @@ class DiskInfo:
                 temp = DiskInfo.get_disk_temperature(temp_device)
                 if temp is not None:
                     info['temperature'] = temp
-                    info['temperature_str'] = f"{temp:.1f}°C"
+                    info['temperature_str'] = f"{round(temp)}°C"
 
         # Get disk usage
         usage = DiskInfo.get_disk_usage(branch_path)

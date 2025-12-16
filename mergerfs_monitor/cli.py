@@ -72,7 +72,7 @@ class CLI:
             # Add columns
             table.add_column("Branch", style="cyan", no_wrap=False)
             table.add_column("Physical Disk", style="blue")
-            table.add_column("Temperature", justify="right", style="yellow")
+            table.add_column("Temp", justify="right", style="yellow")
             table.add_column("Total Space", justify="right", style="green")
             table.add_column("Used Space", justify="right", style="red")
             table.add_column("Free Space", justify="right", style="green")
