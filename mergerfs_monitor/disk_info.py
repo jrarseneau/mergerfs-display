@@ -17,14 +17,20 @@ class DiskInfo:
     def get_physical_disk(path: str) -> Optional[str]:
         """
         Determine the physical disk device for a given path.
+        Supports ZFS pools, device mappers, and standard block devices.
 
         Args:
             path: Path to check
 
         Returns:
-            Physical disk device (e.g., /dev/sda) or None if not found
+            Physical disk device (e.g., /dev/sda or disk model) or None if not found
         """
         try:
+            # First check if this is a ZFS filesystem
+            zfs_disk = DiskInfo._get_zfs_physical_disk(path)
+            if zfs_disk:
+                return zfs_disk
+
             # Use df to find the device
             result = subprocess.run(
                 ['df', path],
@@ -70,6 +76,129 @@ class DiskInfo:
             return device
 
         except (subprocess.CalledProcessError, IndexError, Exception):
+            return None
+
+    @staticmethod
+    def _resolve_disk_by_id(disk_name: str) -> Optional[str]:
+        """
+        Resolve a disk name to a /dev/disk/by-id/ path.
+
+        Args:
+            disk_name: Disk model/serial name (e.g., ST16000NM001G-2KK103_ZL267HW4)
+
+        Returns:
+            Path to /dev/disk/by-id/ device or None
+        """
+        try:
+            by_id_path = Path('/dev/disk/by-id')
+            if not by_id_path.exists():
+                return None
+
+            # Look for a device that contains the disk name
+            for device_link in by_id_path.iterdir():
+                if disk_name in device_link.name:
+                    # Return the symlink itself (smartctl works with by-id paths)
+                    return str(device_link)
+
+        except Exception:
+            pass
+
+        return None
+
+    @staticmethod
+    def _get_zfs_physical_disk(path: str) -> Optional[str]:
+        """
+        Get the physical disk for a ZFS filesystem.
+
+        Args:
+            path: Path to check
+
+        Returns:
+            Cleaned physical disk name or None if not ZFS
+        """
+        try:
+            # Check if the path is on a ZFS filesystem
+            result = subprocess.run(
+                ['df', '-T', path],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+
+            lines = result.stdout.strip().split('\n')
+            if len(lines) < 2:
+                return None
+
+            # Check if filesystem type is ZFS
+            parts = lines[1].split()
+            if len(parts) < 2:
+                return None
+
+            fs_type = parts[1]
+            if fs_type != 'zfs':
+                return None
+
+            # Get the ZFS pool name (first part before /)
+            filesystem = parts[0]
+            pool_name = filesystem.split('/')[0]
+
+            # Get the physical device from zpool status
+            zpool_result = subprocess.run(
+                ['zpool', 'status', pool_name],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+
+            # Parse zpool status output to find the physical device
+            # Example output:
+            #   disk1                                      ONLINE       0     0     0
+            #     ata-ST16000NM001G-2KK103_ZL267HW4-part1  ONLINE       0     0     0
+            lines = zpool_result.stdout.split('\n')
+            in_config = False
+            devices = []
+
+            for line in lines:
+                if 'config:' in line.lower():
+                    in_config = True
+                    continue
+
+                if in_config and line.strip():
+                    # Look for device lines (indented with device names)
+                    # Skip lines with NAME, STATE, READ, WRITE, CKSUM headers
+                    if 'NAME' in line and 'STATE' in line:
+                        continue
+
+                    # Match lines that look like devices
+                    stripped = line.strip()
+                    if stripped and not stripped.startswith('errors:'):
+                        parts = stripped.split()
+                        if len(parts) >= 1:
+                            device_name = parts[0]
+
+                            # Skip the pool name itself and special vdev types
+                            if device_name in [pool_name, 'mirror', 'raidz', 'raidz1', 'raidz2', 'raidz3', 'cache', 'log', 'spare']:
+                                continue
+
+                            # This looks like a physical device
+                            devices.append(device_name)
+
+            if not devices:
+                return None
+
+            # Take the first device and clean it up
+            device = devices[0]
+
+            # Strip partition suffixes like -part1, -part2, p1, p2, etc.
+            device = re.sub(r'-part\d+$', '', device)
+            device = re.sub(r'p\d+$', '', device)
+
+            # Strip disk type prefixes like ata-, scsi-, nvme-, etc.
+            device = re.sub(r'^(ata|scsi|nvme|usb|wwn)-', '', device)
+
+            return device
+
+        except (subprocess.CalledProcessError, FileNotFoundError, Exception):
             return None
 
     @staticmethod
@@ -311,7 +440,15 @@ class DiskInfo:
             info['physical_disk'] = physical_disk
 
             # Get temperature
-            temp = DiskInfo.get_disk_temperature(physical_disk)
+            # If the physical_disk doesn't start with /dev/, try to resolve it
+            temp_device = physical_disk
+            if not physical_disk.startswith('/dev/'):
+                # Try to find the device in /dev/disk/by-id/
+                resolved = DiskInfo._resolve_disk_by_id(physical_disk)
+                if resolved:
+                    temp_device = resolved
+
+            temp = DiskInfo.get_disk_temperature(temp_device)
             if temp is not None:
                 info['temperature'] = temp
                 info['temperature_str'] = f"{temp:.1f}°C"
