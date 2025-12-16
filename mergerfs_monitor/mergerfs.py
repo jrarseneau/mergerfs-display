@@ -28,18 +28,13 @@ class MergerFSPool:
         Returns:
             List of branch paths
         """
-        mergerfs_control = self.pool_path / ".mergerfs"
-
-        if not mergerfs_control.exists():
-            raise ValueError(
-                f"Path does not appear to be a MergerFS mount: {self.pool_path}\n"
-                f"Expected to find .mergerfs control file at: {mergerfs_control}"
-            )
+        # .mergerfs is a special MergerFS control interface, not a real file
+        mergerfs_control = str(self.pool_path / ".mergerfs")
 
         try:
             # Get the user.mergerfs.branches extended attribute
             branches_attr = xattr.getxattr(
-                str(mergerfs_control),
+                mergerfs_control,
                 "user.mergerfs.branches"
             )
 
