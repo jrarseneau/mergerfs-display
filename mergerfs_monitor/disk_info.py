@@ -465,23 +465,37 @@ class DiskInfo:
                 ['smartctl', '-i', device],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=10
             )
 
-            if result.returncode not in [0, 4]:  # 0 = success, 4 = success with previous errors
+            # smartctl can return various codes, be more lenient
+            # 0 = success, 4 = previous errors, 64 = device had errors in past
+            if result.returncode > 64:
                 return None
 
             # Parse smartctl output for user capacity
             # Look for lines like: "User Capacity:    16,000,900,661,248 bytes [16.0 TB]"
             for line in result.stdout.split('\n'):
-                if 'User Capacity:' in line:
-                    # Extract the bytes value
-                    match = re.search(r'([\d,]+)\s+bytes', line)
+                if 'User Capacity:' in line or 'user capacity:' in line.lower():
+                    # Try to extract the bytes value first
+                    match = re.search(r'([\d,]+)\s+bytes', line, re.IGNORECASE)
                     if match:
-                        bytes_str = match.group(1).replace(',', '')
-                        return int(bytes_str)
+                        bytes_str = match.group(1).replace(',', '').replace(' ', '')
+                        try:
+                            return int(bytes_str)
+                        except ValueError:
+                            pass
 
-        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError, ValueError):
+                    # Fallback: extract TB value and convert
+                    match = re.search(r'\[(\d+(?:\.\d+)?)\s*TB\]', line, re.IGNORECASE)
+                    if match:
+                        tb_value = float(match.group(1))
+                        # Convert TB (decimal) to bytes
+                        return int(tb_value * 1000 * 1000 * 1000 * 1000)
+
+        except subprocess.TimeoutExpired:
+            pass
+        except (subprocess.CalledProcessError, FileNotFoundError, ValueError, Exception):
             pass
 
         return None
