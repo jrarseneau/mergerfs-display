@@ -199,6 +199,79 @@ class DiskInfo:
             return None
 
     @staticmethod
+    def _get_zfs_pool_usage(path: str) -> Optional[Dict[str, any]]:
+        """
+        Get disk usage statistics for a ZFS pool.
+
+        Uses 'zpool list' to get accurate pool-level statistics instead of
+        dataset-level statistics which can be misleading with quotas.
+
+        Args:
+            path: Path to check
+
+        Returns:
+            Dictionary with total, used, free (in bytes), and percent used or None if not ZFS
+        """
+        try:
+            # Check if the path is on a ZFS filesystem
+            result = subprocess.run(
+                ['df', '-T', path],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+
+            lines = result.stdout.strip().split('\n')
+            if len(lines) < 2:
+                return None
+
+            # Check if filesystem type is ZFS
+            parts = lines[1].split()
+            if len(parts) < 2 or parts[1] != 'zfs':
+                return None
+
+            # Get the ZFS pool name (first part before /)
+            filesystem = parts[0]
+            pool_name = filesystem.split('/')[0]
+
+            # Query zpool list for pool statistics
+            # Using -Hp for parseable output (no headers, exact bytes)
+            zpool_result = subprocess.run(
+                ['zpool', 'list', '-Hp', pool_name],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+
+            # Parse zpool list output
+            # Format: name size alloc free expandsz frag cap dedup health altroot
+            pool_line = zpool_result.stdout.strip()
+            if not pool_line:
+                return None
+
+            fields = pool_line.split('\t')
+            if len(fields) < 4:
+                return None
+
+            # Extract size, allocated (used), and free in bytes
+            total = int(fields[1])   # SIZE
+            used = int(fields[2])    # ALLOC
+            free = int(fields[3])    # FREE
+
+            # Calculate percentage
+            percent = (used / total * 100) if total > 0 else 0
+
+            return {
+                'total': total,
+                'used': used,
+                'free': free,
+                'percent': percent
+            }
+
+        except (subprocess.CalledProcessError, FileNotFoundError, ValueError, IndexError, Exception):
+            return None
+
+    @staticmethod
     def _get_zfs_physical_disk(path: str) -> Optional[str]:
         """
         Get the physical disk for a ZFS filesystem.
@@ -348,6 +421,7 @@ class DiskInfo:
     def get_disk_usage(path: str) -> Optional[Dict[str, any]]:
         """
         Get disk usage statistics for a path.
+        For ZFS filesystems, queries the pool directly for accurate statistics.
 
         Args:
             path: Path to check
@@ -355,6 +429,12 @@ class DiskInfo:
         Returns:
             Dictionary with total, used, free (in bytes), and percent used
         """
+        # First check if this is ZFS - if so, use zpool list for accurate stats
+        zfs_usage = DiskInfo._get_zfs_pool_usage(path)
+        if zfs_usage:
+            return zfs_usage
+
+        # Fall back to standard disk usage for non-ZFS filesystems
         try:
             usage = psutil.disk_usage(path)
             return {
