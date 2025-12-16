@@ -461,6 +461,7 @@ class DiskInfo:
             Size in bytes or None if not available
         """
         try:
+            print(f"DEBUG: Running smartctl -i on device: {device}")
             result = subprocess.run(
                 ['smartctl', '-i', device],
                 capture_output=True,
@@ -468,36 +469,61 @@ class DiskInfo:
                 timeout=10
             )
 
+            print(f"DEBUG: smartctl return code: {result.returncode}")
+            print(f"DEBUG: smartctl stdout length: {len(result.stdout)} chars")
+            print(f"DEBUG: smartctl stderr: {result.stderr[:200] if result.stderr else 'none'}")
+
             # smartctl can return various codes, be more lenient
             # 0 = success, 4 = previous errors, 64 = device had errors in past
             if result.returncode > 64:
+                print(f"DEBUG: Return code {result.returncode} > 64, returning None")
                 return None
 
             # Parse smartctl output for user capacity
             # Look for lines like: "User Capacity:    16,000,900,661,248 bytes [16.0 TB]"
+            print("DEBUG: Searching for User Capacity line...")
             for line in result.stdout.split('\n'):
+                if 'capacity' in line.lower():
+                    print(f"DEBUG: Found capacity line: {line.strip()}")
+
                 if 'User Capacity:' in line or 'user capacity:' in line.lower():
+                    print(f"DEBUG: Matched User Capacity line: {line.strip()}")
                     # Try to extract the bytes value first
                     match = re.search(r'([\d,]+)\s+bytes', line, re.IGNORECASE)
                     if match:
                         bytes_str = match.group(1).replace(',', '').replace(' ', '')
+                        print(f"DEBUG: Extracted bytes string: {bytes_str}")
                         try:
-                            return int(bytes_str)
-                        except ValueError:
+                            size = int(bytes_str)
+                            print(f"DEBUG: Successfully parsed size: {size} bytes")
+                            return size
+                        except ValueError as e:
+                            print(f"DEBUG: Failed to parse bytes: {e}")
                             pass
 
                     # Fallback: extract TB value and convert
                     match = re.search(r'\[(\d+(?:\.\d+)?)\s*TB\]', line, re.IGNORECASE)
                     if match:
                         tb_value = float(match.group(1))
-                        # Convert TB (decimal) to bytes
-                        return int(tb_value * 1000 * 1000 * 1000 * 1000)
+                        size = int(tb_value * 1000 * 1000 * 1000 * 1000)
+                        print(f"DEBUG: Parsed TB value {tb_value}, converted to {size} bytes")
+                        return size
+
+            print("DEBUG: No User Capacity line found in output")
+            # Print first 500 chars of output for debugging
+            print(f"DEBUG: First 500 chars of stdout:\n{result.stdout[:500]}")
 
         except subprocess.TimeoutExpired:
+            print("DEBUG: smartctl command timed out")
             pass
-        except (subprocess.CalledProcessError, FileNotFoundError, ValueError, Exception):
+        except FileNotFoundError:
+            print("DEBUG: smartctl command not found")
+            pass
+        except Exception as e:
+            print(f"DEBUG: Exception occurred: {type(e).__name__}: {e}")
             pass
 
+        print("DEBUG: Returning None - no size found")
         return None
 
     @staticmethod
