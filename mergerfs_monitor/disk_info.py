@@ -95,15 +95,108 @@ class DiskInfo:
                 return None
 
             # Look for a device that contains the disk name
+            # Prefer devices without partition suffixes
+            candidates = []
             for device_link in by_id_path.iterdir():
-                if disk_name in device_link.name:
-                    # Return the symlink itself (smartctl works with by-id paths)
-                    return str(device_link)
+                link_name = device_link.name
+
+                if disk_name in link_name:
+                    # Skip partition links (ending with -partN or -pN)
+                    if re.search(r'-part\d+$', link_name) or re.search(r'-p\d+$', link_name):
+                        continue
+
+                    # This is a candidate (non-partition device)
+                    candidates.append(str(device_link))
+
+            # Return the shortest matching candidate (most likely to be the base device)
+            if candidates:
+                return min(candidates, key=len)
 
         except Exception:
             pass
 
         return None
+
+    @staticmethod
+    def _get_zfs_disk_device_for_temp(path: str) -> Optional[str]:
+        """
+        Get the device path for temperature monitoring of a ZFS disk.
+
+        Args:
+            path: Path to check
+
+        Returns:
+            Device path suitable for smartctl or None if not ZFS
+        """
+        try:
+            # Check if the path is on a ZFS filesystem
+            result = subprocess.run(
+                ['df', '-T', path],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+
+            lines = result.stdout.strip().split('\n')
+            if len(lines) < 2:
+                return None
+
+            # Check if filesystem type is ZFS
+            parts = lines[1].split()
+            if len(parts) < 2 or parts[1] != 'zfs':
+                return None
+
+            # Get the ZFS pool name (first part before /)
+            filesystem = parts[0]
+            pool_name = filesystem.split('/')[0]
+
+            # Get the physical device from zpool status
+            zpool_result = subprocess.run(
+                ['zpool', 'status', pool_name],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+
+            # Parse zpool status output to find the physical device
+            lines = zpool_result.stdout.split('\n')
+            in_config = False
+
+            for line in lines:
+                if 'config:' in line.lower():
+                    in_config = True
+                    continue
+
+                if in_config and line.strip():
+                    if 'NAME' in line and 'STATE' in line:
+                        continue
+
+                    stripped = line.strip()
+                    if stripped and not stripped.startswith('errors:'):
+                        parts = stripped.split()
+                        if len(parts) >= 1:
+                            device_name = parts[0]
+
+                            # Skip the pool name itself and special vdev types
+                            if device_name in [pool_name, 'mirror', 'raidz', 'raidz1', 'raidz2', 'raidz3', 'cache', 'log', 'spare']:
+                                continue
+
+                            # Found a physical device - return it with full path
+                            # Try /dev/disk/by-id/ first (preserving full name)
+                            by_id_device = f"/dev/disk/by-id/{device_name}"
+                            if Path(by_id_device).exists():
+                                return by_id_device
+
+                            # If that doesn't exist, try stripping -part suffix
+                            device_without_part = re.sub(r'-part\d+$', '', device_name)
+                            by_id_device_no_part = f"/dev/disk/by-id/{device_without_part}"
+                            if Path(by_id_device_no_part).exists():
+                                return by_id_device_no_part
+
+            return None
+
+        except (subprocess.CalledProcessError, FileNotFoundError, Exception):
+            return None
 
     @staticmethod
     def _get_zfs_physical_disk(path: str) -> Optional[str]:
@@ -440,18 +533,23 @@ class DiskInfo:
             info['physical_disk'] = physical_disk
 
             # Get temperature
-            # If the physical_disk doesn't start with /dev/, try to resolve it
-            temp_device = physical_disk
-            if not physical_disk.startswith('/dev/'):
-                # Try to find the device in /dev/disk/by-id/
-                resolved = DiskInfo._resolve_disk_by_id(physical_disk)
-                if resolved:
-                    temp_device = resolved
+            # Try direct ZFS device resolution first (most reliable for ZFS)
+            temp_device = DiskInfo._get_zfs_disk_device_for_temp(branch_path)
 
-            temp = DiskInfo.get_disk_temperature(temp_device)
-            if temp is not None:
-                info['temperature'] = temp
-                info['temperature_str'] = f"{temp:.1f}°C"
+            # If not ZFS or resolution failed, fall back to standard resolution
+            if not temp_device:
+                temp_device = physical_disk
+                if not physical_disk.startswith('/dev/'):
+                    # Try to find the device in /dev/disk/by-id/
+                    resolved = DiskInfo._resolve_disk_by_id(physical_disk)
+                    if resolved:
+                        temp_device = resolved
+
+            if temp_device:
+                temp = DiskInfo.get_disk_temperature(temp_device)
+                if temp is not None:
+                    info['temperature'] = temp
+                    info['temperature_str'] = f"{temp:.1f}°C"
 
         # Get disk usage
         usage = DiskInfo.get_disk_usage(branch_path)
