@@ -629,18 +629,18 @@ class DiskInfo:
         """
         for unit in ['B', 'KB', 'MB', 'GB', 'TB', 'PB']:
             if bytes_value < 1000.0:
-                # Format with 1 decimal, then check if it ends in .0
-                formatted = f"{bytes_value:.1f}"
-                if formatted.endswith('.0'):
-                    return f"{int(round(bytes_value))} {unit}"
-                return f"{formatted} {unit}"
+                # Check if value is close to a whole number (within 0.1)
+                rounded = round(bytes_value)
+                if abs(bytes_value - rounded) <= 0.1:
+                    return f"{rounded} {unit}"
+                return f"{bytes_value:.1f} {unit}"
             bytes_value /= 1000.0
 
         # For EB range
-        formatted = f"{bytes_value:.1f}"
-        if formatted.endswith('.0'):
-            return f"{int(round(bytes_value))} EB"
-        return f"{formatted} EB"
+        rounded = round(bytes_value)
+        if abs(bytes_value - rounded) <= 0.1:
+            return f"{rounded} EB"
+        return f"{bytes_value:.1f} EB"
 
     @staticmethod
     def get_branch_info(branch_path: str) -> Dict[str, any]:
