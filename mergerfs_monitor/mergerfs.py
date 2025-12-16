@@ -28,8 +28,22 @@ class MergerFSPool:
         Returns:
             List of branch paths
         """
+        # First verify the pool path itself exists
+        if not self.pool_path.exists():
+            raise ValueError(
+                f"Pool path does not exist: {self.pool_path}\n"
+                f"Please verify the path in your configuration file."
+            )
+
+        if not self.pool_path.is_dir():
+            raise ValueError(
+                f"Pool path is not a directory: {self.pool_path}\n"
+                f"Please provide a valid MergerFS mount point."
+            )
+
         # .mergerfs is a special MergerFS control interface, not a real file
-        mergerfs_control = str(self.pool_path / ".mergerfs")
+        # We need to construct the path as a string to access the virtual control interface
+        mergerfs_control = os.path.join(str(self.pool_path), ".mergerfs")
 
         try:
             # Get the user.mergerfs.branches extended attribute
@@ -50,7 +64,12 @@ class MergerFSPool:
         except OSError as e:
             raise ValueError(
                 f"Failed to read MergerFS branches from {mergerfs_control}: {e}\n"
-                f"Make sure this is a valid MergerFS mount and you have appropriate permissions."
+                f"Actual path attempted: {mergerfs_control}\n"
+                f"This could mean:\n"
+                f"  1. The path is not a MergerFS mount\n"
+                f"  2. You don't have permission to access extended attributes\n"
+                f"  3. MergerFS is not running or configured properly\n"
+                f"Try running: xattr -l {mergerfs_control}"
             )
 
     def get_branches(self) -> List[str]:
