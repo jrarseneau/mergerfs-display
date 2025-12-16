@@ -351,7 +351,7 @@ HTML_TEMPLATE = """
                             <th>Branch</th>
                             <th>Physical Disk</th>
                             <th>Temp</th>
-                            <th>Total Space</th>
+                            <th>Size</th>
                             <th>Used Space</th>
                             <th>Free Space</th>
                             <th>Free %</th>
@@ -375,7 +375,7 @@ HTML_TEMPLATE = """
                                     <span class="temperature">{{ branch.temperature_str }}</span>
                                 {% endif %}
                             </td>
-                            <td><span class="space-value">{{ branch.total_str }}</span></td>
+                            <td><span class="space-value">{{ branch.size_str }}</span></td>
                             <td><span class="space-value">{{ branch.used_str }}</span></td>
                             <td><span class="space-value">{{ branch.free_str }}</span></td>
                             <td>

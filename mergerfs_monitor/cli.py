@@ -73,7 +73,7 @@ class CLI:
             table.add_column("Branch", style="cyan", no_wrap=False)
             table.add_column("Physical Disk", style="blue")
             table.add_column("Temp", justify="right", style="yellow")
-            table.add_column("Total Space", justify="right", style="green")
+            table.add_column("Size", justify="right", style="green")
             table.add_column("Used Space", justify="right", style="red")
             table.add_column("Free Space", justify="right", style="green")
             table.add_column("Free %", justify="right", style="bright_green")
@@ -98,7 +98,7 @@ class CLI:
                     info['branch'],
                     info['physical_disk'],
                     info['temperature_str'],
-                    info['total_str'],
+                    info['size_str'],
                     info['used_str'],
                     info['free_str'],
                     free_percent_str

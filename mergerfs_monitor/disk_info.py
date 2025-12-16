@@ -447,6 +447,46 @@ class DiskInfo:
             return None
 
     @staticmethod
+    def get_raw_disk_size(device: str) -> Optional[int]:
+        """
+        Get the raw advertised disk size from smartctl.
+
+        This returns the manufacturer's advertised capacity (e.g., 16TB)
+        rather than the usable capacity after formatting.
+
+        Args:
+            device: Physical disk device (e.g., /dev/sda or /dev/disk/by-id/...)
+
+        Returns:
+            Size in bytes or None if not available
+        """
+        try:
+            result = subprocess.run(
+                ['smartctl', '-i', device],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            if result.returncode not in [0, 4]:  # 0 = success, 4 = success with previous errors
+                return None
+
+            # Parse smartctl output for user capacity
+            # Look for lines like: "User Capacity:    16,000,900,661,248 bytes [16.0 TB]"
+            for line in result.stdout.split('\n'):
+                if 'User Capacity:' in line:
+                    # Extract the bytes value
+                    match = re.search(r'([\d,]+)\s+bytes', line)
+                    if match:
+                        bytes_str = match.group(1).replace(',', '')
+                        return int(bytes_str)
+
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError, ValueError):
+            pass
+
+        return None
+
+    @staticmethod
     def get_disk_temperature(device: str) -> Optional[float]:
         """
         Get the temperature of a disk device.
@@ -593,6 +633,8 @@ class DiskInfo:
             'physical_disk': 'N/A',
             'temperature': None,
             'temperature_str': 'N/A',
+            'size': 0,
+            'size_str': 'N/A',
             'total': 0,
             'used': 0,
             'free': 0,
@@ -630,6 +672,12 @@ class DiskInfo:
                 if temp is not None:
                     info['temperature'] = temp
                     info['temperature_str'] = f"{round(temp)}°C"
+
+                # Get raw disk size (advertised capacity like 16TB)
+                raw_size = DiskInfo.get_raw_disk_size(temp_device)
+                if raw_size is not None:
+                    info['size'] = raw_size
+                    info['size_str'] = DiskInfo.format_bytes(raw_size)
 
         # Get disk usage
         usage = DiskInfo.get_disk_usage(branch_path)
