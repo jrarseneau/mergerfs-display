@@ -692,4 +692,9 @@ class DiskInfo:
             info['used_str'] = DiskInfo.format_bytes(usage['used'])
             info['free_str'] = DiskInfo.format_bytes(usage['free'])
 
+            # If we couldn't get raw disk size from smartctl, fall back to pool size
+            if info['size'] == 0 and usage['total'] > 0:
+                info['size'] = usage['total']
+                info['size_str'] = DiskInfo.format_bytes(usage['total'])
+
         return info
