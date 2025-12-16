@@ -4,6 +4,7 @@ MergerFS pool information retrieval.
 
 import xattr
 import os
+import re
 from pathlib import Path
 from typing import List, Optional
 
@@ -20,6 +21,28 @@ class MergerFSPool:
         """
         self.pool_path = Path(pool_path)
         self.branches = self._get_branches()
+
+    @staticmethod
+    def _natural_sort_key(path: str):
+        """
+        Generate a sort key for natural (numerical) sorting.
+
+        This ensures that /mnt/disk2 comes before /mnt/disk10
+        instead of the default alphabetical sorting.
+
+        Args:
+            path: Path string to generate sort key for
+
+        Returns:
+            Tuple of alternating strings and integers for sorting
+        """
+        parts = []
+        for part in re.split(r'(\d+)', path):
+            if part.isdigit():
+                parts.append(int(part))
+            else:
+                parts.append(part)
+        return parts
 
     def _get_branches(self) -> List[str]:
         """
@@ -67,6 +90,9 @@ class MergerFSPool:
 
             if not branches:
                 raise ValueError(f"No branches found for pool: {self.pool_path}")
+
+            # Sort branches using natural sorting (disk1, disk2, disk10 instead of disk1, disk10, disk2)
+            branches.sort(key=self._natural_sort_key)
 
             return branches
 
