@@ -53,8 +53,17 @@ class MergerFSPool:
             )
 
             # Decode and split the branches
+            # Format is: /path1=RW:/path2=RO:/path3=RW
+            # We need to strip the =RW/=RO/etc suffixes
             branches_str = branches_attr.decode('utf-8')
-            branches = [b.strip() for b in branches_str.split(':') if b.strip()]
+            branches = []
+            for branch in branches_str.split(':'):
+                branch = branch.strip()
+                if branch:
+                    # Remove the =RW, =RO, =NC, etc. suffix
+                    if '=' in branch:
+                        branch = branch.split('=')[0]
+                    branches.append(branch)
 
             if not branches:
                 raise ValueError(f"No branches found for pool: {self.pool_path}")
