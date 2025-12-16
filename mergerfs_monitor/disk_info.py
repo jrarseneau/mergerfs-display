@@ -629,15 +629,15 @@ class DiskInfo:
         """
         for unit in ['B', 'KB', 'MB', 'GB', 'TB', 'PB']:
             if bytes_value < 1000.0:
-                # Remove decimals if the value is a whole number
-                if bytes_value == int(bytes_value):
-                    return f"{int(bytes_value)} {unit}"
+                # Check if value rounds to a whole number
+                if round(bytes_value, 1) == round(bytes_value, 0):
+                    return f"{int(round(bytes_value))} {unit}"
                 return f"{bytes_value:.1f} {unit}"
             bytes_value /= 1000.0
 
         # For EB range
-        if bytes_value == int(bytes_value):
-            return f"{int(bytes_value)} EB"
+        if round(bytes_value, 1) == round(bytes_value, 0):
+            return f"{int(round(bytes_value))} EB"
         return f"{bytes_value:.1f} EB"
 
     @staticmethod
